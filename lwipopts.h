@@ -10,7 +10,7 @@
 #define MEM_ALIGNMENT 4
 #define MEM_SIZE 4096
 #define MEMP_NUM_PBUF 16
-#define PBUF_POOL_SIZE 64               // Ajuste conforme necessário
+#define PBUF_POOL_SIZE 16               // Ajuste conforme necessário
 #define MEMP_NUM_UDP_PCB 4
 #define MEMP_NUM_TCP_PCB 4
 #define MEMP_NUM_TCP_SEG 16
