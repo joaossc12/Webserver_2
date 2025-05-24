@@ -1,3 +1,4 @@
+# Generated Cmake Pico project file
 
 cmake_minimum_required(VERSION 3.13)
 
@@ -17,7 +18,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(Webserver_01 Webserver_01.c lib/ssd1306.c)
+add_executable(Webserver_01 Webserver_01.c )
 
 pico_set_program_name(Webserver_01 "Webserver_01")
 pico_set_program_version(Webserver_01 "0.1")
@@ -26,16 +27,11 @@ pico_set_program_version(Webserver_01 "0.1")
 pico_enable_stdio_uart(Webserver_01 0)
 pico_enable_stdio_usb(Webserver_01 1)
 
-pico_generate_pio_header(Webserver_01 ${CMAKE_CURRENT_LIST_DIR}/Webserver_01.pio)
-
 # Add the standard library to the build
 target_link_libraries(Webserver_01
         pico_stdlib
         hardware_gpio
         hardware_adc
-        hardware_i2c
-        hardware_pio
-        hardware_clocks
         pico_cyw43_arch_lwip_threadsafe_background)
 
 # Add the standard include files to the build

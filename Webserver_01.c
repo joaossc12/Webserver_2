@@ -10,19 +10,15 @@
 #include "lwip/tcp.h"            // Funções e estruturas para trabalhar com o protocolo TCP
 #include "lwip/netif.h"          // Funções e estruturas para trabalhar com interfaces de rede (netif)
 
-#include "hardware/clocks.h"
+
 #include "pico/bootrom.h"
-#include "hardware/i2c.h"
-#include "./lib/ssd1306.h"
-#include "./lib/font.h"
-#include "hardware/pio.h"
-#include "Webserver_01.pio.h"
-#include <math.h>
+
+
 //---------------------------------------------------
 // DEFINES
 //---------------------------------------------------
-#define WIFI_SSID ""
-#define WIFI_PASSWORD ""
+#define WIFI_SSID "SIQUEIRA&SANTANA 2.4GHZ"
+#define WIFI_PASSWORD "@124Santana100"
 
 #define LED_PIN CYW43_WL_GPIO_LED_PIN   // GPIO do CI CYW43
 #define LED_BLUE 12                
@@ -31,23 +27,11 @@
 #define botaoB 6
 #define BUTTON_A 5
 #define BUZZER 21
-#define I2C_PORT        i2c1
-#define I2C_SDA         14
-#define I2C_SCL         15
-#define ENDERECO        0x3C
-#define LED_MATRIX      7
-#define TOTAL_LEDS      25
-#define MAX_LED_VALUE   60
 
 //---------------------------------------------------
 // VARIAVEIS GLOBAIS
 //---------------------------------------------------
 float temperatura = 20;
-int32_t cortina = 0;
-bool flag_lampada = false;
-ssd1306_t ssd; // Display de 128 x 64
-char string_cortina[5];
-char string_ar[5];
 
 //---------------------------------------------------
 // PROTOTIPAÇÃO
@@ -62,10 +46,6 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, er
 void user_request(char **request);
 // Interrupção para colocar placa no modo bootsel
 void gpio_irq_handler(uint gpio, uint32_t events);
-//Controle do display
-void AtualizaDisplay(void);
-//Controle Matriz
-void controle_matrix(PIO pio, uint sm, int cortina);
 
 // Função principal
 int main()
@@ -74,11 +54,6 @@ int main()
     stdio_init_all();
     // Inicializar os Pinos GPIO e demais perifericos utilizados
     init_pins();
-    PIO pio = pio0;
-    bool clk = set_sys_clock_khz(128000, false);
-    uint offset = pio_add_program(pio, &Webserver_01_program);
-    uint sm_pio = pio_claim_unused_sm(pio, true);
-    Webserver_01_program_init(pio, sm_pio, offset, LED_MATRIX);
 
 
     //Inicializa a arquitetura do cyw43
@@ -139,8 +114,6 @@ int main()
         * quando se utiliza um estilo de sondagem pico_cyw43_arch 
         */
         cyw43_arch_poll(); // Necessário para manter o Wi-Fi ativo
-        AtualizaDisplay();
-        controle_matrix(pio, sm_pio, cortina);
         sleep_ms(100);      // Reduz o uso da CPU
     }
 
@@ -171,16 +144,6 @@ void init_pins(void){
     gpio_set_dir(botaoB, GPIO_IN);
     gpio_pull_up(botaoB);
     gpio_set_irq_enabled_with_callback(botaoB, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-
-    // Configura I2C para o display
-    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
-    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
-    gpio_pull_up(I2C_SDA);
-    gpio_pull_up(I2C_SCL);
-    i2c_init(I2C_PORT, 400000); // 0.4 MHz
-    ssd1306_init(&ssd, WIDTH, HEIGHT, false, ENDERECO, I2C_PORT);
-    ssd1306_config(&ssd);
-    ssd1306_send_data(&ssd);
 }
 
 // Função de callback ao aceitar conexões TCP
@@ -199,9 +162,9 @@ void user_request(char **request){
     }else if (strstr(*request, "GET /lampada_off") != NULL){
         gpio_put(LED_BLUE, 0);
     }else if (strstr(*request, "GET /cortina_on") != NULL){
-        cortina += 10;
+        gpio_put(LED_RED, 1);
     }else if (strstr(*request, "GET /cortina_off") != NULL){
-        cortina -= 10;
+        gpio_put(LED_RED, 0);
     }else if (strstr(*request, "GET /temp_mais") != NULL){
         temperatura = temperatura + 1;
     }else if (strstr(*request, "GET /temp_menos") != NULL){
@@ -232,51 +195,36 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, er
     user_request(&request);
 
     // Cria a resposta HTML
-    char html[1500];
+    char html[1024];
 
     // Instruções html do webserver
-    snprintf(html, sizeof(html),
-    "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/html\r\n"
-    "\r\n"
-    "<!DOCTYPE html>\n"
-    "<html>\n"
-    "<head>\n"
-    "<meta charset=\"UTF-8\">\n"
-    "<title>Smarth House</title>\n"
-    "<style>\n"
-    "body { background-color: #e0f7fa; font-family: Calibri, sans-serif; text-align: center; margin-top: 50px; }\n"
-    "h1 { font-size: 64px; margin-bottom: 30px; }\n"
-    "button { background-color: LightGreen; font-size: 36px; margin: 10px; padding: 20px 40px; border-radius: 10px; width: 80%%; max-width: 400px; }\n"
-    ".temperature { font-size: 48px; margin-top: 30px; color: #333; }\n"
-    ".linha { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }\n"
-    ".linha form { margin: 0; }\n"
-    "</style>\n"
-    "</head>\n"
-    "<body>\n"
-    "<h1>Smarth House: Painel de Controle</h1>\n"
-
-    // Botões da lâmpada (na mesma linha)
-    "<div class=\"linha\">\n"
-    "<form action=\"./lampada_on\"><button>Ligar Lâmpada</button></form>\n"
-    "<form action=\"./lampada_off\"><button>Desligar Lâmpada</button></form>\n"
-    "</div>\n"
-    "<div class=\"linha\">\n"
-    "<form action=\"./cortina_on\"><button>Abrir Cortina</button></form>\n"
-    "<form action=\"./cortina_off\"><button>Fechar Cortina</button></form>\n"
-    "</div>\n"
-        // Temperatura
-    "<p class=\"temperature\">Abertura da cortina: %d %</p>\n"
-    "<div class=\"linha\">\n"
-    "<form action=\"./temp_mais\"><button>Aumentar Temperatura</button></form>\n"
-    "<form action=\"./temp_menos\"><button>Diminuir Temperatura</button></form>\n"
-    "</div>\n"
-    // Temperatura
-    "<p class=\"temperature\">Temperatura do Ar: %.1f &deg;C </p>\n"
-
-    "</body>\n"
-    "</html>\n",
-    cortina,temperatura);
+    snprintf(html, sizeof(html), // Formatar uma string e armazená-la em um buffer de caracteres
+             "HTTP/1.1 200 OK\r\n"
+             "Content-Type: text/html\r\n"
+             "\r\n"
+             "<!DOCTYPE html>\n"
+             "<html>\n"
+             "<head>\n"
+             "<title> Smarth House</title>\n"
+             "<style>\n"
+             "body { background-color: #e0f7fa; font-family: Calibri, sans-serif; text-align: center; margin-top: 50px; }\n"
+             "h1 { font-size: 64px; margin-bottom: 30px; }\n"
+             "button { background-color: LightGreen; font-size: 36px; margin: 10px; padding: 20px 40px; border-radius: 10px; }\n"
+             ".temperature { font-size: 48px; margin-top: 30px; color: #333; }\n"
+             "</style>\n"
+             "</head>\n"
+             "<body>\n"
+             "<h1>Smarth House: Painel de Controle</h1>\n"
+             "<form action=\"./lampada_on\"><button>Ligar Lampada</button></form>\n"
+             "<form action=\"./lampada_off\"><button>Desligar Lampada</button></form>\n"
+             "<form action=\"./cortina_on\"><button>Abrir Cortina</button></form>\n"
+             "<form action=\"./cortina_off\"><button>Fechar Coritna</button></form>\n"
+             "<form action=\"./temp_mais\"><button>Aumentar Temperatura</button></form>\n"
+             "<form action=\"./temp_menos\"><button>Diminuir Temperatura</button></form>\n"
+             "<p class=\"temperature\">Temperatura do Ar: %.1f &deg;C</p>\n"
+             "</body>\n"
+             "</html>\n",
+             temperatura);
 
     // Escreve dados para envio (mas não os envia imediatamente).
     tcp_write(tpcb, html, strlen(html), TCP_WRITE_FLAG_COPY);
@@ -310,47 +258,3 @@ void gpio_irq_handler(uint gpio, uint32_t events)
         }
 
 }}
-void AtualizaDisplay(void){
-    sprintf(string_cortina,"%d", cortina);
-    snprintf(string_ar, sizeof(string_ar), "%.2f%%", temperatura);
-    ssd1306_fill(&ssd, false);
-    ssd1306_rect(&ssd, 1, 1, 126, 62, 1, 1); // Borda grossa
-    ssd1306_rect(&ssd, 4, 4, 120, 56, 0, 1); // Borda grossa
-    ssd1306_draw_string(&ssd, "LAMPADA ", 5, 7);
-    if (flag_lampada){
-     ssd1306_draw_string(&ssd, "ON", 70, 7);   
-    }else{ssd1306_draw_string(&ssd, "OFF", 70, 7); }
-    ssd1306_draw_string(&ssd, "CORTINA :", 5, 17);
-    ssd1306_draw_string(&ssd, string_cortina, 70, 17);
-    ssd1306_draw_string(&ssd, "%", 100, 17);
-    ssd1306_draw_string(&ssd, "TEMP. :", 5, 27);
-    ssd1306_draw_string(&ssd, string_ar, 80, 27);
-    ssd1306_draw_string(&ssd, " C", 100, 27);
-    ssd1306_send_data(&ssd);
-}
-
-void controle_matrix(PIO pio, uint sm, int cortina){
-    int8_t cor_steps = 8;
-    // Mapeia volume [0, volume_max] para [0, TOTAL_LEDS] (valor fracionário)
-    double leds_ativos = (TOTAL_LEDS * cortina) / 100;
-    int leds_full = (int)leds_ativos;
-    double led_parcial = fmod(leds_ativos, 1.0);
-    int brilho_parcial = (int)(led_parcial * MAX_LED_VALUE);
-    
-    uint32_t valor_full = ((uint32_t)MAX_LED_VALUE) << cor_steps;
-    uint32_t valor_parcial = ((uint32_t)brilho_parcial) << cor_steps;
-    
-    uint32_t valor[TOTAL_LEDS];
-    for (int i = 0; i < TOTAL_LEDS; i++) {
-        if (i < leds_full) {
-            valor[i] = valor_full;
-        } else if (i == leds_full && (led_parcial > 0.0)) {
-            valor[i] = valor_parcial;
-        } else {
-            valor[i] = 0;
-        }
-    }
-    for (int i = 0; i < TOTAL_LEDS; i++) {
-        pio_sm_put_blocking(pio, sm, valor[i]);
-    }
-}
